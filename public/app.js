@@ -1,138 +1,1001 @@
-import { createEvent, validateProfile, today, addDays, daysUntil, money, dateLabel, totals, insights, localIdeas, localAdvice, uid, CURRENCIES } from './lib/planner.js';
+import {
+  createEvent,
+  validateProfile,
+  today,
+  addDays,
+  daysUntil,
+  money,
+  dateLabel,
+  totals,
+  insights,
+  localIdeas,
+  localAdvice,
+  uid,
+  CURRENCIES,
+} from './lib/planner.js';
 import { loadEvents, saveEvents, exportEvent, importEvent } from './lib/storage.js';
 import { escapeHTML as esc, icon, illustration } from './lib/ui.js';
 
-const app = document.querySelector('#app'), modal = document.querySelector('#modal');
-let events = [], selected = 0, page = 'overview', taskFilter = 'all', ideas = [], busy = false, aiReady = false, needsCode = false, forceGuide = false, accessCode = '', storageBroken = false;
+const app = document.querySelector('#app'),
+  modal = document.querySelector('#modal');
+let events = [],
+  selected = 0,
+  page = 'overview',
+  taskFilter = 'all',
+  ideas = [],
+  busy = false,
+  aiReady = false,
+  needsCode = false,
+  forceGuide = false,
+  accessCode = '',
+  storageBroken = false;
 let startupError = '';
-try { events = loadEvents() ?? [createEvent({ name: 'Meera & Arjun’s wedding', type: 'wedding', location: 'Jaipur, India', date: addDays(today(), 90), budget: 450000, guests: 80, currency: 'INR', style: 'Intimate & relaxed', outdoor: true, preferences: 'A garden celebration with seasonal vegetarian food, family traditions, step-free access and a quiet corner for older guests.' })]; }
-catch { storageBroken = true; startupError = 'Saved data could not be read. Your existing browser data has not been overwritten. Export new work before leaving.'; }
+try {
+  events = loadEvents() ?? [
+    createEvent({
+      name: 'Meera & Arjun’s wedding',
+      type: 'wedding',
+      location: 'Jaipur, India',
+      date: addDays(today(), 90),
+      budget: 450000,
+      guests: 80,
+      currency: 'INR',
+      style: 'Intimate & relaxed',
+      outdoor: true,
+      preferences:
+        'A garden celebration with seasonal vegetarian food, family traditions, step-free access and a quiet corner for older guests.',
+    }),
+  ];
+} catch {
+  storageBroken = true;
+  startupError =
+    'Saved data could not be read. Your existing browser data has not been overwritten. Export new work before leaving.';
+}
 const event = () => events[selected];
-const currency = value => money(value, event().profile.currency);
-const doneCount = () => event().tasks.filter(t => t.done).length;
-const navItems = [['overview', 'grid', 'Overview'], ['budget', 'wallet', 'Budget'], ['timeline', 'calendar', 'Timeline'], ['vendors', 'people', 'Vendors'], ['ideas', 'idea', 'Ideas & inspiration'], ['assistant', 'sparkle', 'Planning assistant']];
-function toast(message) { const el = document.querySelector('#toast'); el.textContent = message; el.classList.add('visible'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('visible'), 5000); }
-function persist() { if (storageBroken) { toast('Browser storage is unavailable. Export your plan to keep it.'); return; } try { saveEvents(events); } catch { storageBroken = true; toast('Your browser could not save this plan. Export it before leaving.'); } }
-function go(next) { page = next; render(); document.querySelector('#main').focus(); }
+const currency = (value) => money(value, event().profile.currency);
+const doneCount = () => event().tasks.filter((t) => t.done).length;
+const navItems = [
+  ['overview', 'grid', 'Overview'],
+  ['budget', 'wallet', 'Budget'],
+  ['timeline', 'calendar', 'Timeline'],
+  ['vendors', 'people', 'Vendors'],
+  ['ideas', 'idea', 'Ideas & inspiration'],
+  ['assistant', 'sparkle', 'Planning assistant'],
+];
+function toast(message) {
+  const el = document.querySelector('#toast');
+  el.textContent = message;
+  el.classList.add('visible');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove('visible'), 5000);
+}
+function persist() {
+  if (storageBroken) {
+    toast('Browser storage is unavailable. Export your plan to keep it.');
+    return;
+  }
+  try {
+    saveEvents(events);
+  } catch {
+    storageBroken = true;
+    toast('Your browser could not save this plan. Export it before leaving.');
+  }
+}
+function go(next) {
+  page = next;
+  render();
+  document.querySelector('#main').focus();
+}
 function render() {
-  const e = event(), p = e?.profile;
-  app.innerHTML = `<aside class="sidebar"><a href="#" class="brand" data-action="nav" data-page="overview">${icon('leaf')}<span>gather<span class="brand-dot">.</span></span></a><p class="brand-caption">GOOD TIMES, THOUGHTFULLY PLANNED</p><div class="workspace-label">YOUR WORKSPACE</div><nav aria-label="Main navigation">${navItems.map(([id, glyph, label]) => `<button class="nav-item ${page === id ? 'active' : ''}" data-action="nav" data-page="${id}" ${page === id ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span>${id === 'assistant' ? '<span class="tiny-tag">AI</span>' : ''}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="little-note">${icon('heart')}<p>A little planning.<br><em>A lot of joy.</em></p></div><button class="subtle" data-action="privacy">${icon('leaf')} Saved on this device</button></div></aside><div class="workspace"><header class="topbar"><span class="breadcrumb">My workspace <span>/</span> <strong>${navItems.find(n => n[0] === page)[2]}</strong></span><div class="top-actions"><label class="sr-only" for="event-select">Current event</label><select id="event-select" ${!events.length ? 'disabled' : ''}>${events.length ? events.map((ev, i) => `<option value="${i}" ${i === selected ? 'selected' : ''}>${esc(ev.profile.name)}</option>`).join('') : '<option>No events yet</option>'}</select><button class="button primary small" data-action="new">${icon('plus')} New event</button></div></header><main id="main" tabindex="-1">${e ? `<div class="page-heading"><div><div class="eyebrow">LET’S MAKE IT MEMORABLE</div><h1>${({ overview: 'Every detail, coming together.', budget: 'Make room for what matters.', timeline: 'One step closer to the day.', vendors: 'Good people. Great celebrations.', ideas: 'A celebration that feels like you.', assistant: 'A little help along the way.' })[page]}</h1><p>${({ overview: 'Your big picture, and the little things that bring it to life.', budget: 'A thoughtful budget is the beginning of a beautiful plan.', timeline: 'Less last-minute. More in-the-moment.', vendors: 'Keep your shortlist, quotes and conversations in one place.', ideas: 'Thoughtful touches inspired by your people, place and priorities.', assistant: 'Turn your event brief into practical next steps.' })[page]}</p></div><div class="heading-actions"><button class="button small" data-action="export">${icon('down')} Export plan</button><button class="icon-button" data-action="print" aria-label="Print event summary">${icon('print')}</button></div></div>${({ overview: overview, budget: budgetView, timeline: timelineView, vendors: vendorsView, ideas: ideasView, assistant: assistantView })[page]()}` : emptyView()}<footer class="footer"><span>Made for the moments that matter.</span><div><button data-action="import">Import a plan</button><span>·</span><button data-action="privacy">Privacy & data</button></div></footer></main></div>`;
+  // Preserve keyboard focus when updating a checkbox or an inline budget amount.
+  const active = document.activeElement;
+  const focusAttributes = [
+    'id',
+    'data-task',
+    'data-budget',
+    'data-field',
+    'data-action',
+    'data-page',
+    'data-id',
+    'data-filter',
+    'data-index',
+  ];
+  const focusKey = app.contains(active)
+    ? focusAttributes
+        .filter((key) => active.hasAttribute(key))
+        .map((key) => [key, active.getAttribute(key)])
+    : [];
+  const e = event(),
+    p = e?.profile;
+  app.innerHTML = /* HTML */ `<aside class="sidebar">
+      <a href="#" class="brand" data-action="nav" data-page="overview"
+        >${icon('leaf')}<span>gather<span class="brand-dot">.</span></span></a
+      >
+      <p class="brand-caption">GOOD TIMES, THOUGHTFULLY PLANNED</p>
+      <div class="workspace-label">YOUR WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        ${navItems.map(([id, glyph, label]) => `<button class="nav-item ${page === id ? 'active' : ''}" data-action="nav" data-page="${id}" aria-label="${label}" ${page === id ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span>${id === 'assistant' ? '<span class="tiny-tag">AI</span>' : ''}</button>`).join('')}
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="little-note">
+          ${icon('heart')}
+          <p>A little planning.<br /><em>A lot of joy.</em></p>
+        </div>
+        <button class="subtle" data-action="privacy">${icon('leaf')} Saved on this device</button>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <span class="breadcrumb"
+          >My workspace <span>/</span>
+          <strong>${navItems.find((n) => n[0] === page)[2]}</strong></span
+        >
+        <div class="top-actions">
+          <label class="sr-only" for="event-select">Current event</label
+          ><select id="event-select" ${!events.length ? 'disabled' : ''}>
+            ${events.length ? events.map((ev, i) => `<option value="${i}" ${i === selected ? 'selected' : ''}>${esc(ev.profile.name)}</option>`).join('') : '<option>No events yet</option>'}</select
+          ><button class="button primary small" data-action="new">${icon('plus')} New event</button>
+        </div>
+      </header>
+      <main id="main" tabindex="-1">
+        ${e ? `<div class="page-heading"><div><div class="eyebrow">LET’S MAKE IT MEMORABLE</div><h1>${{ overview: 'Every detail, coming together.', budget: 'Make room for what matters.', timeline: 'One step closer to the day.', vendors: 'Good people. Great celebrations.', ideas: 'A celebration that feels like you.', assistant: 'A little help along the way.' }[page]}</h1><p>${{ overview: 'Your big picture, and the little things that bring it to life.', budget: 'A thoughtful budget is the beginning of a beautiful plan.', timeline: 'Less last-minute. More in-the-moment.', vendors: 'Keep your shortlist, quotes and conversations in one place.', ideas: 'Thoughtful touches inspired by your people, place and priorities.', assistant: 'Turn your event brief into practical next steps.' }[page]}</p></div><div class="heading-actions"><button class="button small" data-action="export">${icon('down')} Export plan</button><button class="icon-button" data-action="print" aria-label="Print event summary">${icon('print')}</button></div></div>${{ overview: overview, budget: budgetView, timeline: timelineView, vendors: vendorsView, ideas: ideasView, assistant: assistantView }[page]()}` : emptyView()}
+        <footer class="footer">
+          <span>Made for the moments that matter.</span>
+          <div>
+            <button data-action="import">Import a plan</button><span>·</span
+            ><button data-action="privacy">Privacy & data</button>
+          </div>
+        </footer>
+      </main>
+    </div>`;
+  if (focusKey.length) {
+    const replacement = Array.from(app.querySelectorAll(active.tagName)).find((element) =>
+      focusKey.every(([key, value]) => element.getAttribute(key) === value),
+    );
+    replacement?.focus({ preventScroll: true });
+  }
 }
-function emptyView() { return `<section class="empty welcome">${icon('leaf')}<div class="eyebrow">WELCOME TO GATHER</div><h1>Good times start here.</h1><p>Bring your budget, timeline, people and ideas together.<br>Make a wedding, birthday or community event your own.</p><button class="button primary" data-action="new">${icon('plus')} Plan your first event</button><button class="subtle" data-action="import">Or import an existing plan</button></section>`; }
+function emptyView() {
+  return /* HTML */ `<section class="empty welcome">
+    ${icon('leaf')}
+    <div class="eyebrow">WELCOME TO GATHER</div>
+    <h1>Good times start here.</h1>
+    <p>
+      Bring your budget, timeline, people and ideas together.<br />Make a wedding, birthday or
+      community event your own.
+    </p>
+    <button class="button primary" data-action="new">${icon('plus')} Plan your first event</button
+    ><button class="subtle" data-action="import">Or import an existing plan</button>
+  </section>`;
+}
 function overview() {
-  const e = event(), p = e.profile, sum = totals(e), days = daysUntil(p.date), done = doneCount(), tasks = e.tasks.filter(t => !t.done).sort((a,b) => a.date.localeCompare(b.date)).slice(0,3);
-  return `<section class="event-hero"><div class="hero-copy"><span class="pill">${icon('leaf')} ${esc(p.type)} plan</span><h2>${esc(p.name)}</h2><div class="event-meta"><span>${icon('calendar')}${dateLabel(p.date)}</span><span>${icon('pin')}${esc(p.location)}</span></div><p>${esc(p.style)} · ${p.outdoor ? 'An outdoor celebration' : 'An indoor gathering'}</p><button class="text-button" data-action="edit-event">Edit event details ${icon('arrow')}</button></div>${illustration}<div class="countdown"><strong>${Math.abs(days)}</strong><span>${days < 0 ? 'days since the day' : days === 0 ? 'today is the day!' : 'days to go'}</span></div></section><section class="stat-grid" aria-label="Event at a glance"><article class="stat"><div class="stat-label">TOTAL BUDGET ${icon('wallet')}</div><strong>${currency(p.budget)}</strong><span>${currency(sum.remaining)} ${sum.remaining < 0 ? 'balance · over budget' : 'left to spend'}</span></article><article class="stat"><div class="stat-label">ON THE GUEST LIST ${icon('people')}</div><strong>${p.guests}<small> guests</small></strong><span>${currency(sum.perGuest)} budget per person</span></article><article class="stat"><div class="stat-label">PLAN PROGRESS ${icon('check')}</div><strong>${e.tasks.length ? Math.round(done/e.tasks.length*100) : 0}<small>% ready</small></strong><progress max="${e.tasks.length || 1}" value="${done}" aria-label="Completed tasks"></progress><span>${done} of ${e.tasks.length} tasks completed</span></article><article class="stat"><div class="stat-label">VENDORS BOOKED ${icon('heart')}</div><strong>${e.vendors.filter(v => v.status === 'Booked').length}<small> confirmed</small></strong><span>${e.vendors.length} in your vendor shortlist</span></article></section><div class="overview-grid"><section class="card next-up"><div class="section-heading"><div><div class="eyebrow">SMALL STEPS, BIG DIFFERENCE</div><h2>Next on your list</h2></div><button class="text-button" data-action="nav" data-page="timeline">View timeline ${icon('arrow')}</button></div>${tasks.length ? tasks.map(taskRow).join('') : '<div class="mini-empty">All caught up. Take a moment to enjoy it.</div>'}<div class="card-foot">${icon('clock')} Your next chapter starts with one small task.</div></section><section class="card budget-snapshot"><div class="section-heading"><h2>A little budget clarity</h2>${icon('wallet')}</div><div class="budget-number"><strong>${currency(sum.actual)}</strong><span>spent of ${currency(p.budget)}</span></div><progress value="${Math.min(sum.actual, p.budget)}" max="${p.budget}" aria-label="Budget spent"></progress><div class="legend"><span><i class="dot green"></i>Spent</span><span>${currency(sum.remaining)} remaining</span></div><p>Keep a little breathing room. Your initial plan reserves 10% for the unexpected.</p><button class="text-button" data-action="nav" data-page="budget">Explore your budget ${icon('arrow')}</button></section></div><section class="insight-strip"><div class="insight-icon">${icon('sparkle')}</div><div><span class="eyebrow">A THOUGHTFUL NUDGE</span><h3>${esc(insights(e)[0]?.title || 'You’re making steady progress')}</h3><p>${esc(insights(e)[0]?.text || 'Keep your plan up to date as quotes, dates and guest numbers change.')}</p></div><button class="button" data-action="nav" data-page="assistant">Let’s plan ${icon('arrow')}</button></section><div class="section-heading inspiration-heading"><div><div class="eyebrow">MAKE IT YOURS</div><h2>A little inspiration</h2></div><button class="text-button" data-action="nav" data-page="ideas">Explore ideas ${icon('arrow')}</button></div><div class="idea-grid">${localIdeas(p).map((i,n) => ideaCard(i,n,true)).join('')}</div>`;
+  const e = event(),
+    p = e.profile,
+    sum = totals(e),
+    days = daysUntil(p.date),
+    done = doneCount(),
+    tasks = e.tasks
+      .filter((t) => !t.done)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 3);
+  return /* HTML */ `<section class="event-hero">
+      <div class="hero-copy">
+        <span class="pill">${icon('leaf')} ${esc(p.type)} plan</span>
+        <h2>${esc(p.name)}</h2>
+        <div class="event-meta">
+          <span>${icon('calendar')}${dateLabel(p.date)}</span
+          ><span>${icon('pin')}${esc(p.location)}</span>
+        </div>
+        <p>${esc(p.style)} · ${p.outdoor ? 'An outdoor celebration' : 'An indoor gathering'}</p>
+        <button class="text-button" data-action="edit-event">
+          Edit event details ${icon('arrow')}
+        </button>
+      </div>
+      ${illustration}
+      <div class="countdown">
+        <strong>${Math.abs(days)}</strong
+        ><span
+          >${days < 0 ? 'days since the day' : days === 0 ? 'today is the day!' : 'days to go'}</span
+        >
+      </div>
+    </section>
+    <section class="stat-grid" aria-label="Event at a glance">
+      <article class="stat">
+        <div class="stat-label">TOTAL BUDGET ${icon('wallet')}</div>
+        <strong>${currency(p.budget)}</strong
+        ><span
+          >${currency(sum.remaining)}
+          ${sum.remaining < 0 ? 'balance · over budget' : 'left to spend'}</span
+        >
+      </article>
+      <article class="stat">
+        <div class="stat-label">ON THE GUEST LIST ${icon('people')}</div>
+        <strong>${p.guests}<small> guests</small></strong
+        ><span>${currency(sum.perGuest)} budget per person</span>
+      </article>
+      <article class="stat">
+        <div class="stat-label">PLAN PROGRESS ${icon('check')}</div>
+        <strong
+          >${e.tasks.length ? Math.round((done / e.tasks.length) * 100) : 0}<small
+            >% ready</small
+          ></strong
+        ><progress
+          max="${e.tasks.length || 1}"
+          value="${done}"
+          aria-label="Completed tasks"
+        ></progress
+        ><span>${done} of ${e.tasks.length} tasks completed</span>
+      </article>
+      <article class="stat">
+        <div class="stat-label">VENDORS BOOKED ${icon('heart')}</div>
+        <strong
+          >${e.vendors.filter((v) => v.status === 'Booked').length}<small> confirmed</small></strong
+        ><span>${e.vendors.length} in your vendor shortlist</span>
+      </article>
+    </section>
+    <div class="overview-grid">
+      <section class="card next-up">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">SMALL STEPS, BIG DIFFERENCE</div>
+            <h2>Next on your list</h2>
+          </div>
+          <button class="text-button" data-action="nav" data-page="timeline">
+            View timeline ${icon('arrow')}
+          </button>
+        </div>
+        ${tasks.length ? tasks.map(taskRow).join('') : '<div class="mini-empty">All caught up. Take a moment to enjoy it.</div>'}
+        <div class="card-foot">${icon('clock')} Your next chapter starts with one small task.</div>
+      </section>
+      <section class="card budget-snapshot">
+        <div class="section-heading">
+          <h2>A little budget clarity</h2>
+          ${icon('wallet')}
+        </div>
+        <div class="budget-number">
+          <strong>${currency(sum.actual)}</strong><span>spent of ${currency(p.budget)}</span>
+        </div>
+        <progress
+          value="${Math.min(sum.actual, p.budget)}"
+          max="${p.budget}"
+          aria-label="Budget spent"
+        ></progress>
+        <div class="legend">
+          <span><i class="dot green"></i>Spent</span
+          ><span>${currency(sum.remaining)} remaining</span>
+        </div>
+        <p>Keep a little breathing room. Your initial plan reserves 10% for the unexpected.</p>
+        <button class="text-button" data-action="nav" data-page="budget">
+          Explore your budget ${icon('arrow')}
+        </button>
+      </section>
+    </div>
+    <section class="insight-strip">
+      <div class="insight-icon">${icon('sparkle')}</div>
+      <div>
+        <span class="eyebrow">A THOUGHTFUL NUDGE</span>
+        <h3>${esc(insights(e)[0]?.title || 'You’re making steady progress')}</h3>
+        <p>
+          ${esc(insights(e)[0]?.text || 'Keep your plan up to date as quotes, dates and guest numbers change.')}
+        </p>
+      </div>
+      <button class="button" data-action="nav" data-page="assistant">
+        Let’s plan ${icon('arrow')}
+      </button>
+    </section>
+    <div class="section-heading inspiration-heading">
+      <div>
+        <div class="eyebrow">MAKE IT YOURS</div>
+        <h2>A little inspiration</h2>
+      </div>
+      <button class="text-button" data-action="nav" data-page="ideas">
+        Explore ideas ${icon('arrow')}
+      </button>
+    </div>
+    <div class="idea-grid">
+      ${localIdeas(p)
+        .map((i, n) => ideaCard(i, n, true))
+        .join('')}
+    </div>`;
 }
-function taskRow(t) { const late = !t.done && t.date < today(); return `<div class="task-row ${t.done ? 'completed' : ''}"><input type="checkbox" data-task="${t.id}" ${t.done ? 'checked' : ''} aria-label="Mark ${esc(t.title)} ${t.done ? 'incomplete' : 'complete'}"><div><button class="task-title" data-action="edit-task" data-id="${t.id}">${esc(t.title)}</button><span class="task-meta">${esc(t.category)} <span>·</span> ${dateLabel(t.date)} ${late ? '<b class="overdue">Overdue</b>' : ''}</span></div>${t.done ? '<span class="status success">Done</span>' : `<span class="status ${late ? 'warning' : ''}">${late ? 'Needs attention' : t.date === today() ? 'Today' : 'To do'}</span>`}</div>`; }
+function taskRow(t) {
+  const late = !t.done && t.date < today();
+  return /* HTML */ `<div class="task-row ${t.done ? 'completed' : ''}">
+    <input
+      type="checkbox"
+      data-task="${t.id}"
+      ${t.done ? 'checked' : ''}
+      aria-label="Mark ${esc(t.title)} ${t.done ? 'incomplete' : 'complete'}"
+    />
+    <div>
+      <button class="task-title" data-action="edit-task" data-id="${t.id}">${esc(t.title)}</button
+      ><span class="task-meta"
+        >${esc(t.category)} <span>·</span> ${dateLabel(t.date)}
+        ${late ? '<b class="overdue">Overdue</b>' : ''}</span
+      >
+    </div>
+    ${t.done ? '<span class="status success">Done</span>' : `<span class="status ${late ? 'warning' : ''}">${late ? 'Needs attention' : t.date === today() ? 'Today' : 'To do'}</span>`}
+  </div>`;
+}
 function budgetView() {
-  const e = event(), sum = totals(e);
-  return `<div class="summary-band"><div><span>Total budget</span><strong>${currency(e.profile.budget)}</strong></div><div><span>Planned allocations</span><strong>${currency(sum.planned)}</strong></div><div><span>Actual spent</span><strong>${currency(sum.actual)}</strong></div><div class="${sum.remaining < 0 ? 'negative' : ''}"><span>Left to spend</span><strong>${currency(sum.remaining)}</strong></div></div>${sum.unallocated !== 0 ? `<div class="notice ${sum.unallocated < 0 ? 'warning' : ''}">${sum.unallocated < 0 ? `Your plan is ${currency(-sum.unallocated)} over budget. Reduce allocations or edit your event budget.` : `${currency(sum.unallocated)} is unallocated. Add it to a category or keep it as extra breathing room.`}</div>` : ''}<section class="card"><div class="section-heading"><div><h2>Give every detail a place</h2><p>Update whole-number amounts as estimates become real payments.</p></div><button class="button small" data-action="add-budget">${icon('plus')} Add category</button></div><div class="table-wrap"><table><caption class="sr-only">Budget categories, planned allocations and actual spending in ${esc(e.profile.currency)}</caption><thead><tr><th scope="col">Category</th><th scope="col">Planned (${esc(e.profile.currency)})</th><th scope="col">Actual (${esc(e.profile.currency)})</th><th scope="col">Balance</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${e.budget.map((b,n) => `<tr><th scope="row"><span class="category-dot tone-${n%4}"></span>${esc(b.name)}</th><td><input class="money-input" type="number" min="0" max="100000000" step="1" value="${b.planned}" data-budget="${b.id}" data-field="planned" aria-label="${esc(b.name)} planned amount"></td><td><input class="money-input" type="number" min="0" max="100000000" step="1" value="${b.actual}" data-budget="${b.id}" data-field="actual" aria-label="${esc(b.name)} actual spending"></td><td class="${b.actual > b.planned ? 'negative' : ''}">${currency(b.planned-b.actual)}</td><td><button class="icon-button" data-action="delete-budget" data-id="${b.id}" aria-label="Delete ${esc(b.name)} category">${icon('trash')}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>Total</th><td>${currency(sum.planned)}</td><td>${currency(sum.actual)}</td><td>${currency(sum.planned-sum.actual)}</td><td></td></tr></tfoot></table></div></section><div class="notice">${icon('idea')} Allocations are a starting framework, not local market prices. Vendor quotes do not automatically count as spending; record payments here to avoid double counting.</div>`;
+  const e = event(),
+    sum = totals(e);
+  return /* HTML */ `<div class="summary-band">
+      <div><span>Total budget</span><strong>${currency(e.profile.budget)}</strong></div>
+      <div><span>Planned allocations</span><strong>${currency(sum.planned)}</strong></div>
+      <div><span>Actual spent</span><strong>${currency(sum.actual)}</strong></div>
+      <div class="${sum.remaining < 0 ? 'negative' : ''}">
+        <span>Left to spend</span><strong>${currency(sum.remaining)}</strong>
+      </div>
+    </div>
+    ${sum.unallocated !== 0 ? `<div class="notice ${sum.unallocated < 0 ? 'warning' : ''}">${sum.unallocated < 0 ? `Your plan is ${currency(-sum.unallocated)} over budget. Reduce allocations or edit your event budget.` : `${currency(sum.unallocated)} is unallocated. Add it to a category or keep it as extra breathing room.`}</div>` : ''}
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <h2>Give every detail a place</h2>
+          <p>Update whole-number amounts as estimates become real payments.</p>
+        </div>
+        <button class="button small" data-action="add-budget">${icon('plus')} Add category</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <caption class="sr-only">
+            Budget categories, planned allocations and actual spending in ${esc(e.profile.currency)}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Category</th>
+              <th scope="col">Planned (${esc(e.profile.currency)})</th>
+              <th scope="col">Actual (${esc(e.profile.currency)})</th>
+              <th scope="col">Balance</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${e.budget.map((b, n) => `<tr><th scope="row"><span class="category-dot tone-${n % 4}"></span>${esc(b.name)}</th><td><input class="money-input" type="number" min="0" max="100000000" step="1" value="${b.planned}" data-budget="${b.id}" data-field="planned" aria-label="${esc(b.name)} planned amount"></td><td><input class="money-input" type="number" min="0" max="100000000" step="1" value="${b.actual}" data-budget="${b.id}" data-field="actual" aria-label="${esc(b.name)} actual spending"></td><td class="${b.actual > b.planned ? 'negative' : ''}">${currency(b.planned - b.actual)}</td><td><button class="icon-button" data-action="delete-budget" data-id="${b.id}" aria-label="Delete ${esc(b.name)} category">${icon('trash')}</button></td></tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>Total</th>
+              <td>${currency(sum.planned)}</td>
+              <td>${currency(sum.actual)}</td>
+              <td>${currency(sum.planned - sum.actual)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+    <div class="notice">
+      ${icon('idea')} Allocations are a starting framework, not local market prices. Vendor quotes
+      do not automatically count as spending; record payments here to avoid double counting.
+    </div>`;
 }
 function timelineView() {
-  const e = event(), filtered = e.tasks.filter(t => taskFilter === 'all' || (taskFilter === 'done' ? t.done : !t.done)).sort((a,b) => a.date.localeCompare(b.date));
-  return `<div class="toolbar"><div class="segmented" aria-label="Filter tasks">${[['all','All tasks'],['open','To do'],['done','Completed']].map(([id,label]) => `<button data-action="filter" data-filter="${id}" aria-pressed="${taskFilter===id}">${label}</button>`).join('')}</div><button class="button primary" data-action="add-task">${icon('plus')} Add a task</button></div><section class="card"><div class="section-heading"><div><h2>Your path to the celebration</h2><p>${doneCount()} of ${e.tasks.length} tasks complete. Click a task to edit its details.</p></div><span class="pill">${daysUntil(e.profile.date)} days to go</span></div>${filtered.length ? filtered.map(taskRow).join('') : '<div class="empty"><h3>A little breathing room.</h3><p>No tasks in this view. Add a task or switch filters.</p></div>'}</section>${insights(e).filter(i=>i.level==='warn').map(i=>`<div class="notice warning"><strong>${esc(i.title)}</strong> ${esc(i.text)}</div>`).join('')}`;
+  const e = event(),
+    filtered = e.tasks
+      .filter((t) => taskFilter === 'all' || (taskFilter === 'done' ? t.done : !t.done))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  return /* HTML */ `<div class="toolbar">
+      <div class="segmented" aria-label="Filter tasks">
+        ${[
+          ['all', 'All tasks'],
+          ['open', 'To do'],
+          ['done', 'Completed'],
+        ]
+          .map(
+            ([id, label]) =>
+              `<button data-action="filter" data-filter="${id}" aria-pressed="${taskFilter === id}">${label}</button>`,
+          )
+          .join('')}
+      </div>
+      <button class="button primary" data-action="add-task">${icon('plus')} Add a task</button>
+    </div>
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <h2>Your path to the celebration</h2>
+          <p>
+            ${doneCount()} of ${e.tasks.length} tasks complete. Click a task to edit its details.
+          </p>
+        </div>
+        <span class="pill">${daysUntil(e.profile.date)} days to go</span>
+      </div>
+      ${filtered.length ? filtered.map(taskRow).join('') : '<div class="empty"><h3>A little breathing room.</h3><p>No tasks in this view. Add a task or switch filters.</p></div>'}
+    </section>
+    ${insights(e)
+      .filter((i) => i.level === 'warn')
+      .map(
+        (i) => `<div class="notice warning"><strong>${esc(i.title)}</strong> ${esc(i.text)}</div>`,
+      )
+      .join('')}`;
 }
 function vendorsView() {
   const e = event();
-  return `<div class="toolbar"><p>${e.vendors.length} shortlisted · ${e.vendors.filter(v=>v.status==='Booked').length} booked</p><button class="button primary" data-action="add-vendor">${icon('plus')} Add a vendor</button></div>${e.vendors.length ? `<div class="vendor-grid">${e.vendors.map(v=>`<article class="card vendor-card"><div class="vendor-top"><span class="vendor-avatar">${esc(v.name.slice(0,1).toUpperCase())}</span><span class="status ${v.status==='Booked'?'success':''}">${esc(v.status)}</span></div><h2>${esc(v.name)}</h2><p>${esc(v.category)}</p><div class="vendor-quote"><span>Quoted amount</span><strong>${currency(v.quote)}</strong></div><p class="vendor-contact">${esc(v.contact || 'No contact details added')}</p>${v.notes?`<p class="vendor-notes">${esc(v.notes)}</p>`:''}<div class="vendor-checks">${[['terms','Payment & cancellation terms'],['access','Dietary & access needs'],['inclusions','Quote inclusions & taxes']].map(([key,label])=>`<label><input type="checkbox" data-vendor="${v.id}" data-check="${key}" ${v.checks[key]?'checked':''}>${label}</label>`).join('')}</div><button class="button full" data-action="edit-vendor" data-id="${v.id}">${icon('edit')} Edit vendor</button></article>`).join('')}</div>` : `<section class="card empty">${icon('people')}<h2>Your dream team starts here.</h2><p>Add real vendors you’re considering, compare their quotes,<br>and keep track of the questions worth asking.</p><button class="button" data-action="add-vendor">${icon('plus')} Add your first vendor</button></section>`}<div class="notice">${icon('check')} Before booking: confirm availability, written inclusions, cancellation terms, accessibility and tax. Gather tracks your research; it does not verify vendors or make bookings.</div>`;
+  return /* HTML */ `<div class="toolbar">
+      <p>
+        ${e.vendors.length} shortlisted · ${e.vendors.filter((v) => v.status === 'Booked').length}
+        booked
+      </p>
+      <button class="button primary" data-action="add-vendor">${icon('plus')} Add a vendor</button>
+    </div>
+    ${
+      e.vendors.length
+        ? `<div class="vendor-grid">${e.vendors
+            .map(
+              (v) =>
+                `<article class="card vendor-card"><div class="vendor-top"><span class="vendor-avatar">${esc(v.name.slice(0, 1).toUpperCase())}</span><span class="status ${v.status === 'Booked' ? 'success' : ''}">${esc(v.status)}</span></div><h2>${esc(v.name)}</h2><p>${esc(v.category)}</p><div class="vendor-quote"><span>Quoted amount</span><strong>${currency(v.quote)}</strong></div><p class="vendor-contact">${esc(v.contact || 'No contact details added')}</p>${v.notes ? `<p class="vendor-notes">${esc(v.notes)}</p>` : ''}<div class="vendor-checks">${[
+                  ['terms', 'Payment & cancellation terms'],
+                  ['access', 'Dietary & access needs'],
+                  ['inclusions', 'Quote inclusions & taxes'],
+                ]
+                  .map(
+                    ([key, label]) =>
+                      `<label><input type="checkbox" data-vendor="${v.id}" data-check="${key}" ${v.checks[key] ? 'checked' : ''}>${label}</label>`,
+                  )
+                  .join(
+                    '',
+                  )}</div><button class="button full" data-action="edit-vendor" data-id="${v.id}">${icon('edit')} Edit vendor</button></article>`,
+            )
+            .join('')}</div>`
+        : `<section class="card empty">${icon('people')}<h2>Your dream team starts here.</h2><p>Add real vendors you’re considering, compare their quotes,<br>and keep track of the questions worth asking.</p><button class="button" data-action="add-vendor">${icon('plus')} Add your first vendor</button></section>`
+    }
+    <div class="notice">
+      ${icon('check')} Before booking: confirm availability, written inclusions, cancellation terms,
+      accessibility and tax. Gather tracks your research; it does not verify vendors or make
+      bookings.
+    </div>`;
 }
-function ideaCard(i,n,preview=false) { const saved = event().savedIdeas.some(s=>s.title===i.title); return `<article class="idea-card tone-${n%3}"><div class="idea-art"><span class="idea-number">0${n+1}</span>${icon(['leaf','heart','idea'][n%3])}<span class="idea-category">${esc(i.category)}</span></div><div class="idea-content"><h3>${esc(i.title)}</h3><p>${esc(i.description)}</p><div class="idea-cost">${esc(i.cost)}</div><div class="idea-footer"><span>${esc(i.source)}</span>${preview ? `<button class="text-button" data-action="nav" data-page="ideas" aria-label="Explore ${esc(i.title)}">${icon('arrow')}</button>` : `<button class="text-button" data-action="save-idea" data-index="${n}" aria-pressed="${saved}">${icon(saved?'check':'plus')}${saved?'Saved':'Save idea'}</button>`}</div></div></article>`; }
+function ideaCard(i, n, preview = false) {
+  const saved = event().savedIdeas.some((s) => s.title === i.title);
+  return /* HTML */ `<article class="idea-card tone-${n % 3}">
+    <div class="idea-art">
+      <span class="idea-number">0${n + 1}</span>${icon(['leaf', 'heart', 'idea'][n % 3])}<span
+        class="idea-category"
+        >${esc(i.category)}</span
+      >
+    </div>
+    <div class="idea-content">
+      <h3>${esc(i.title)}</h3>
+      <p>${esc(i.description)}</p>
+      <div class="idea-cost">${esc(i.cost)}</div>
+      <div class="idea-footer">
+        <span>${esc(i.source)}</span
+        >${preview ? `<button class="text-button" data-action="nav" data-page="ideas" aria-label="Explore ${esc(i.title)}">${icon('arrow')}</button>` : `<button class="text-button" data-action="save-idea" data-index="${n}" aria-pressed="${saved}">${icon(saved ? 'check' : 'plus')}${saved ? 'Saved' : 'Save idea'}</button>`}
+      </div>
+    </div>
+  </article>`;
+}
 function ideasView() {
   if (!ideas.length) ideas = localIdeas(event().profile);
-  return `<div class="toolbar"><div><span class="pill">${icon('sparkle')} ${aiReady ? 'Gemini available' : 'Planning guide'}</span><p>Inspired by your ${esc(event().profile.style.toLowerCase())} ${esc(event().profile.type)}.</p></div><button class="button primary" data-action="generate-ideas" ${busy?'disabled':''}>${icon('sparkle')} ${busy?'Finding thoughtful ideas…':aiReady?'Generate personalized ideas':'Refresh planning ideas'}</button></div>${!aiReady?'<div class="notice">These are curated, context-aware starting points. Add a Gemini API key on the server to generate new ideas from your full event brief.</div>':''}<div class="idea-grid">${ideas.map((i,n)=>ideaCard(i,n)).join('')}</div><section class="card saved-section"><div class="section-heading"><div><div class="eyebrow">YOUR LITTLE COLLECTION</div><h2>Saved for the day</h2></div><span class="pill">${event().savedIdeas.length} ideas</span></div>${event().savedIdeas.length?event().savedIdeas.map(i=>`<div class="saved-row"><div><h3>${esc(i.title)}</h3><p>${esc(i.description)}</p><small>${esc(i.cost)} · ${esc(i.source)}</small></div><button class="icon-button" data-action="remove-idea" data-id="${i.id}" aria-label="Remove ${esc(i.title)}">${icon('close')}</button></div>`).join(''):'<p class="mini-empty">See something you love? Save it here and make it part of your plan.</p>'}</section>`;
+  return /* HTML */ `<div class="toolbar">
+      <div>
+        <span class="pill"
+          >${icon('sparkle')} ${aiReady ? 'Gemini available' : 'Planning guide'}</span
+        >
+        <p>
+          Inspired by your ${esc(event().profile.style.toLowerCase())} ${esc(event().profile.type)}.
+        </p>
+      </div>
+      <button class="button primary" data-action="generate-ideas" ${busy ? 'disabled' : ''}>
+        ${icon('sparkle')}
+        ${busy ? 'Finding thoughtful ideas…' : aiReady ? 'Generate personalized ideas' : 'Refresh planning ideas'}
+      </button>
+    </div>
+    ${!aiReady ? '<div class="notice">These are curated, context-aware starting points. Add a Gemini API key on the server to generate new ideas from your full event brief.</div>' : ''}
+    <div class="idea-grid">${ideas.map((i, n) => ideaCard(i, n)).join('')}</div>
+    <section class="card saved-section">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">YOUR LITTLE COLLECTION</div>
+          <h2>Saved for the day</h2>
+        </div>
+        <span class="pill">${event().savedIdeas.length} ideas</span>
+      </div>
+      ${
+        event().savedIdeas.length
+          ? event()
+              .savedIdeas.map(
+                (i) =>
+                  `<div class="saved-row"><div><h3>${esc(i.title)}</h3><p>${esc(i.description)}</p><small>${esc(i.cost)} · ${esc(i.source)}</small></div><button class="icon-button" data-action="remove-idea" data-id="${i.id}" aria-label="Remove ${esc(i.title)}">${icon('close')}</button></div>`,
+              )
+              .join('')
+          : '<p class="mini-empty">See something you love? Save it here and make it part of your plan.</p>'
+      }
+    </section>`;
 }
 function assistantView() {
   const e = event();
-  return `<div class="assistant-layout"><section class="card chat-card"><div class="chat-header"><div class="assistant-avatar">${icon('sparkle')}</div><div><h2>Your planning companion</h2><span>${aiReady && !forceGuide?'Powered by Gemini':'Local planning guide · no generative AI'}</span></div></div><div class="chat-log" role="log" aria-label="Planning conversation" aria-live="polite"><div class="message assistant"><span class="message-author">GATHER</span><p>Let’s make ${esc(e.profile.name)} feel a little easier. I can help you think through your budget, next steps, vendors and personal touches.</p></div>${e.messages.map(m=>`<div class="message ${m.role}"><span class="message-author">${m.role==='user'?'YOU':m.mode==='gemini'?'GATHER · GEMINI':'GATHER · PLANNING GUIDE'}</span><p>${esc(m.text)}</p></div>`).join('')}${busy?'<div class="message assistant"><p class="loading">Thinking through the details…</p></div>':''}</div><div class="suggestions">${['Where should I start?', 'How can I reduce costs?', 'What should I ask vendors?'].map(q=>`<button data-action="suggest" data-question="${esc(q)}" ${busy?'disabled':''}>${esc(q)}</button>`).join('')}</div><form id="chat-form" class="chat-form"><label class="sr-only" for="question">Ask your planning question</label><textarea id="question" name="question" maxlength="1500" required rows="2" placeholder="What’s on your planning mind?" ${busy?'disabled':''}></textarea><button class="button primary" type="submit" ${busy?'disabled':''} aria-label="Send question">${icon('arrow')}</button></form><p class="chat-disclaimer">${aiReady&&!forceGuide?'Your event brief, budget and current question are sent to Google Gemini. Vendor contacts and previous messages are not sent. AI can make mistakes; verify advice.':'Your event stays in your browser. The guide uses rules and templates; it does not generate AI responses.'}</p></section><aside class="context-panel"><div class="eyebrow">ALREADY IN THE KNOW</div><h2>Your event brief</h2><dl><dt>Celebration</dt><dd>${esc(e.profile.type)}</dd><dt>People & budget</dt><dd>${e.profile.guests} guests · ${currency(e.profile.budget)}</dd><dt>Place & date</dt><dd>${esc(e.profile.location)}<br>${dateLabel(e.profile.date)}</dd><dt>The feeling</dt><dd>${esc(e.profile.style)}</dd><dt>What matters to you</dt><dd>${esc(e.profile.preferences||'Add dietary, accessibility, cultural or personal preferences.')}</dd></dl><button class="text-button" data-action="edit-event">Refine your brief ${icon('edit')}</button><hr><label class="toggle-label"><input type="checkbox" id="guide-toggle" ${forceGuide?'checked':''}> Use local planning guide</label>${needsCode?'<label class="field">AI access code<input type="password" id="access-code" autocomplete="off" placeholder="Provided by the app owner"></label>':''}<p class="small-copy">Advice is a draft for you to consider. Your budget, tasks and bookings change only when you edit them.</p></aside></div>`;
+  return /* HTML */ `<div class="assistant-layout">
+    <section class="card chat-card">
+      <div class="chat-header">
+        <div class="assistant-avatar">${icon('sparkle')}</div>
+        <div>
+          <h2>Your planning companion</h2>
+          <span
+            >${aiReady && !forceGuide ? 'Powered by Gemini' : 'Local planning guide · no generative AI'}</span
+          >
+        </div>
+      </div>
+      <div class="chat-log" role="log" aria-label="Planning conversation" aria-live="polite">
+        <div class="message assistant">
+          <span class="message-author">GATHER</span>
+          <p>
+            Let’s make ${esc(e.profile.name)} feel a little easier. I can help you think through
+            your budget, next steps, vendors and personal touches.
+          </p>
+        </div>
+        ${e.messages.map((m) => `<div class="message ${m.role}"><span class="message-author">${m.role === 'user' ? 'YOU' : m.mode === 'gemini' ? 'GATHER · GEMINI' : 'GATHER · PLANNING GUIDE'}</span><p>${esc(m.text)}</p></div>`).join('')}${busy ? '<div class="message assistant"><p class="loading">Thinking through the details…</p></div>' : ''}
+      </div>
+      <div class="suggestions">
+        ${['Where should I start?', 'How can I reduce costs?', 'What should I ask vendors?'].map((q) => `<button data-action="suggest" data-question="${esc(q)}" ${busy ? 'disabled' : ''}>${esc(q)}</button>`).join('')}
+      </div>
+      <form id="chat-form" class="chat-form">
+        <label class="sr-only" for="question">Ask your planning question</label
+        ><textarea
+          id="question"
+          name="question"
+          maxlength="1500"
+          required
+          rows="2"
+          placeholder="What’s on your planning mind?"
+          ${busy ? 'disabled' : ''}
+        ></textarea
+        ><button
+          class="button primary"
+          type="submit"
+          ${busy ? 'disabled' : ''}
+          aria-label="Send question"
+        >
+          ${icon('arrow')}
+        </button>
+      </form>
+      <p class="chat-disclaimer">
+        ${aiReady && !forceGuide ? 'Your event brief, budget and current question are sent to Google Gemini. Vendor contacts and previous messages are not sent. AI can make mistakes; verify advice.' : 'Your event stays in your browser. The guide uses rules and templates; it does not generate AI responses.'}
+      </p>
+    </section>
+    <aside class="context-panel">
+      <div class="eyebrow">ALREADY IN THE KNOW</div>
+      <h2>Your event brief</h2>
+      <dl>
+        <dt>Celebration</dt>
+        <dd>${esc(e.profile.type)}</dd>
+        <dt>People & budget</dt>
+        <dd>${e.profile.guests} guests · ${currency(e.profile.budget)}</dd>
+        <dt>Place & date</dt>
+        <dd>${esc(e.profile.location)}<br />${dateLabel(e.profile.date)}</dd>
+        <dt>The feeling</dt>
+        <dd>${esc(e.profile.style)}</dd>
+        <dt>What matters to you</dt>
+        <dd>
+          ${esc(e.profile.preferences || 'Add dietary, accessibility, cultural or personal preferences.')}
+        </dd>
+      </dl>
+      <button class="text-button" data-action="edit-event">
+        Refine your brief ${icon('edit')}
+      </button>
+      <hr />
+      <label class="toggle-label"
+        ><input type="checkbox" id="guide-toggle" ${forceGuide ? 'checked' : ''} /> Use local
+        planning guide</label
+      >${needsCode ? '<label class="field">AI access code<input type="password" id="access-code" autocomplete="off" placeholder="Provided by the app owner"></label>' : ''}
+      <p class="small-copy">
+        Advice is a draft for you to consider. Your budget, tasks and bookings change only when you
+        edit them.
+      </p>
+    </aside>
+  </div>`;
 }
 
-function openDialog(title, body, formId, submitText='Save changes', extra='') {
-  modal.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button type="button" class="icon-button" data-action="close" aria-label="Close dialog">${icon('close')}</button></div>${formId?`<form id="${formId}">${body}<p class="form-error" role="alert"></p><div class="dialog-actions">${extra}<button type="button" class="button" data-action="close">Cancel</button><button type="submit" class="button primary">${submitText}</button></div></form>`:body}`;
+function openDialog(title, body, formId, submitText = 'Save changes', extra = '') {
+  modal.innerHTML = /* HTML */ `<div class="dialog-heading">
+      <h2 id="dialog-title">${title}</h2>
+      <button type="button" class="icon-button" data-action="close" aria-label="Close dialog">
+        ${icon('close')}
+      </button>
+    </div>
+    ${formId ? `<form id="${formId}">${body}<p class="form-error" role="alert"></p><div class="dialog-actions">${extra}<button type="button" class="button" data-action="close">Cancel</button><button type="submit" class="button primary">${submitText}</button></div></form>` : body}`;
   modal.showModal();
 }
-const field = (label, name, value='', opts='') => `<label class="field">${label}<input name="${name}" value="${esc(value)}" ${opts}></label>`;
-function eventDialog(edit=false) {
-  const p = edit?event().profile:{name:'',type:'wedding',location:'',date:addDays(today(),60),budget:150000,guests:50,currency:'INR',style:'Intimate & relaxed',preferences:'',outdoor:false};
-  openDialog(edit?'A few details, a better plan.':'Let’s make something memorable.', `<p class="dialog-intro">${edit?'Your existing allocations and spending stay intact. Incomplete task dates shift with the event date.':'Tell us a little about your celebration. We’ll create a starting budget and timeline.'}</p><input type="hidden" name="editing" value="${edit}">${field('Event name','name',p.name,'required maxlength="120" placeholder="e.g. Riya’s 30th birthday"')}<div class="form-grid"><label class="field">Type of event<select name="type" ${edit?'disabled':''}>${['wedding','birthday','community'].map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}</select></label>${field('Event date','date',p.date,`type="date" required ${edit?'':`min="${today()}"`}`)}${field('Location','location',p.location,'required maxlength="120" placeholder="City or neighborhood"')}${field('Number of guests','guests',p.guests,'type="number" required min="1" max="100000" step="1"')}${field('Total budget','budget',p.budget,'type="number" required min="100" max="100000000" step="1"')}<label class="field">Currency<select name="currency">${CURRENCIES.map(c=>`<option ${p.currency===c?'selected':''}>${c}</option>`).join('')}</select></label></div><label class="field">How should it feel?<select name="style">${['Intimate & relaxed','Classic & elegant','Playful & colorful','Simple & sustainable'].map(s=>`<option ${p.style===s?'selected':''}>${s}</option>`).join('')}</select></label><label class="field">What matters to you?<textarea name="preferences" rows="3" maxlength="1500" placeholder="Dietary needs, accessibility, traditions, favorite things…">${esc(p.preferences)}</textarea></label><label class="toggle-label"><input type="checkbox" name="outdoor" ${p.outdoor?'checked':''}> We’re planning an outdoor event</label>`, 'event-form', edit?'Save details':'Create my plan', edit?'<button type="button" class="button danger push-left" data-action="delete-event">Delete event</button>':'');
+const field = (label, name, value = '', opts = '') =>
+  `<label class="field">${label}<input name="${name}" value="${esc(value)}" ${opts}></label>`;
+function eventDialog(edit = false) {
+  const p = edit
+    ? event().profile
+    : {
+        name: '',
+        type: 'wedding',
+        location: '',
+        date: addDays(today(), 60),
+        budget: 150000,
+        guests: 50,
+        currency: 'INR',
+        style: 'Intimate & relaxed',
+        preferences: '',
+        outdoor: false,
+      };
+  openDialog(
+    edit ? 'A few details, a better plan.' : 'Let’s make something memorable.',
+    `<p class="dialog-intro">${edit ? 'Your existing allocations and spending stay intact. Incomplete task dates shift with the event date.' : 'Tell us a little about your celebration. We’ll create a starting budget and timeline.'}</p><input type="hidden" name="editing" value="${edit}">${field('Event name', 'name', p.name, 'required maxlength="120" placeholder="e.g. Riya’s 30th birthday"')}<div class="form-grid"><label class="field">Type of event<select name="type" ${edit ? 'disabled' : ''}>${['wedding', 'birthday', 'community'].map((t) => `<option ${p.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>${field('Event date', 'date', p.date, `type="date" required ${edit ? '' : `min="${today()}"`}`)}${field('Location', 'location', p.location, 'required maxlength="120" placeholder="City or neighborhood"')}${field('Number of guests', 'guests', p.guests, 'type="number" required min="1" max="100000" step="1"')}${field('Total budget', 'budget', p.budget, 'type="number" required min="100" max="100000000" step="1"')}<label class="field">Currency<select name="currency">${CURRENCIES.map((c) => `<option ${p.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label></div><label class="field">How should it feel?<select name="style">${['Intimate & relaxed', 'Classic & elegant', 'Playful & colorful', 'Simple & sustainable'].map((s) => `<option ${p.style === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">What matters to you?<textarea name="preferences" rows="3" maxlength="1500" placeholder="Dietary needs, accessibility, traditions, favorite things…">${esc(p.preferences)}</textarea></label><label class="toggle-label"><input type="checkbox" name="outdoor" ${p.outdoor ? 'checked' : ''}> We’re planning an outdoor event</label>`,
+    'event-form',
+    edit ? 'Save details' : 'Create my plan',
+    edit
+      ? '<button type="button" class="button danger push-left" data-action="delete-event">Delete event</button>'
+      : '',
+  );
 }
 function taskDialog(id) {
-  const t = event().tasks.find(t=>t.id===id) || { id:'', title:'', date:today(), category:'Planning' };
-  openDialog(t.id?'Make this step your own.':'One more little step.', `<input type="hidden" name="id" value="${t.id}">${field('Task','title',t.title,'required maxlength="200"') }<div class="form-grid">${field('Due date','date',t.date,'type="date" required')}${field('Category or owner','category',t.category,'required maxlength="40"')}</div>`, 'task-form', 'Save task', t.id?`<button type="button" class="button danger push-left" data-action="delete-task" data-id="${t.id}">Delete</button>`:'');
+  const t = event().tasks.find((t) => t.id === id) || {
+    id: '',
+    title: '',
+    date: today(),
+    category: 'Planning',
+  };
+  openDialog(
+    t.id ? 'Make this step your own.' : 'One more little step.',
+    `<input type="hidden" name="id" value="${t.id}">${field('Task', 'title', t.title, 'required maxlength="200"')}<div class="form-grid">${field('Due date', 'date', t.date, 'type="date" required')}${field('Category or owner', 'category', t.category, 'required maxlength="40"')}</div>`,
+    'task-form',
+    'Save task',
+    t.id
+      ? `<button type="button" class="button danger push-left" data-action="delete-task" data-id="${t.id}">Delete</button>`
+      : '',
+  );
 }
 function vendorDialog(id) {
-  const v = event().vendors.find(v=>v.id===id) || { id:'', name:'', category:'Venue', quote:0, status:'Shortlisted', contact:'', notes:'' };
-  openDialog(v.id?'Keep the details together.':'Meet your next collaborator.', `<input type="hidden" name="id" value="${v.id}">${field('Vendor or business name','name',v.name,'required maxlength="100"')}<div class="form-grid">${field('Service or category','category',v.category,'required maxlength="80"')}${field(`Quoted amount (${event().profile.currency})`,'quote',v.quote,'type="number" required min="0" max="100000000" step="1"')}</div>${field('Contact details (optional)','contact',v.contact,'maxlength="150" placeholder="Email or phone"')}<label class="field">Status<select name="status">${['Shortlisted','Contacted','Booked'].map(s=>`<option ${s===v.status?'selected':''}>${s}</option>`).join('')}</select></label><label class="field">Notes<textarea name="notes" maxlength="800" rows="3" placeholder="Inclusions, deposit terms, questions to ask…">${esc(v.notes)}</textarea></label><p class="small-copy">A quote is not a payment. Record actual payments separately in Budget.</p>`, 'vendor-form', 'Save vendor', v.id?`<button type="button" class="button danger push-left" data-action="delete-vendor" data-id="${v.id}">Delete</button>`:'');
+  const v = event().vendors.find((v) => v.id === id) || {
+    id: '',
+    name: '',
+    category: 'Venue',
+    quote: 0,
+    status: 'Shortlisted',
+    contact: '',
+    notes: '',
+  };
+  openDialog(
+    v.id ? 'Keep the details together.' : 'Meet your next collaborator.',
+    `<input type="hidden" name="id" value="${v.id}">${field('Vendor or business name', 'name', v.name, 'required maxlength="100"')}<div class="form-grid">${field('Service or category', 'category', v.category, 'required maxlength="80"')}${field(`Quoted amount (${event().profile.currency})`, 'quote', v.quote, 'type="number" required min="0" max="100000000" step="1"')}</div>${field('Contact details (optional)', 'contact', v.contact, 'maxlength="150" placeholder="Email or phone"')}<label class="field">Status<select name="status">${['Shortlisted', 'Contacted', 'Booked'].map((s) => `<option ${s === v.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="field">Notes<textarea name="notes" maxlength="800" rows="3" placeholder="Inclusions, deposit terms, questions to ask…">${esc(v.notes)}</textarea></label><p class="small-copy">A quote is not a payment. Record actual payments separately in Budget.</p>`,
+    'vendor-form',
+    'Save vendor',
+    v.id
+      ? `<button type="button" class="button danger push-left" data-action="delete-vendor" data-id="${v.id}">Delete</button>`
+      : '',
+  );
 }
-function confirmDelete(title, text, action, id='') { if(modal.open) modal.close(); openDialog(title, `<p>${esc(text)}</p><div class="dialog-actions"><button class="button" data-action="close">Keep it</button><button class="button danger" data-action="${action}" data-id="${id}">Delete permanently</button></div>`); }
-async function requestAI(action, question='') {
+function confirmDelete(title, text, action, id = '') {
+  if (modal.open) modal.close();
+  openDialog(
+    title,
+    `<p>${esc(text)}</p><div class="dialog-actions"><button class="button" data-action="close">Keep it</button><button class="button danger" data-action="${action}" data-id="${id}">Delete permanently</button></div>`,
+  );
+}
+async function requestAI(action, question = '') {
   const e = event();
-  const response = await fetch('/api/assist', { method:'POST', headers:{'Content-Type':'application/json', ...(accessCode?{'X-AI-Access-Code':accessCode}:{})}, body:JSON.stringify({action, question, profile:e.profile, budget:e.budget.map(({name,planned,actual})=>({name,planned,actual}))}), signal:AbortSignal.timeout(30000) });
+  const response = await fetch('/api/assist', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessCode ? { 'X-AI-Access-Code': accessCode } : {}),
+    },
+    body: JSON.stringify({
+      action,
+      question,
+      profile: e.profile,
+      budget: e.budget.map(({ name, planned, actual }) => ({ name, planned, actual })),
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'The assistant is unavailable. Please try again.');
+  if (!response.ok)
+    throw new Error(result.error || 'The assistant is unavailable. Please try again.');
   return result;
 }
 async function sendQuestion(question) {
-  if(busy || !question.trim()) return;
+  if (busy || !question.trim()) return;
   const target = event();
-  target.messages.push({role:'user',text:question.trim()}); busy=true; render();
-  try { const answer = aiReady&&!forceGuide ? await requestAI('advice',question) : {mode:'offline',reply:localAdvice(target,question)}; target.messages.push({role:'assistant',text:answer.reply,mode:answer.mode}); }
-  catch(error) { target.messages.push({role:'assistant',text:`${error.message}\n\nYou can switch to the local planning guide and ask again.`,mode:'offline'}); }
-  finally { target.messages = target.messages.slice(-30); busy=false; persist(); render(); const log=document.querySelector('.chat-log'); if(log) log.scrollTop=log.scrollHeight; document.querySelector('#question')?.focus(); }
+  target.messages.push({ role: 'user', text: question.trim() });
+  busy = true;
+  render();
+  try {
+    const answer =
+      aiReady && !forceGuide
+        ? await requestAI('advice', question)
+        : { mode: 'offline', reply: localAdvice(target, question) };
+    target.messages.push({ role: 'assistant', text: answer.reply, mode: answer.mode });
+  } catch (error) {
+    target.messages.push({
+      role: 'assistant',
+      text: `${error.message}\n\nYou can switch to the local planning guide and ask again.`,
+      mode: 'offline',
+    });
+  } finally {
+    target.messages = target.messages.slice(-30);
+    busy = false;
+    persist();
+    render();
+    const log = document.querySelector('.chat-log');
+    if (log) log.scrollTop = log.scrollHeight;
+    document.querySelector('#question')?.focus();
+  }
 }
 
-document.addEventListener('click', async ev => {
-  const button=ev.target.closest('[data-action]'); if(!button) return;
-  ev.preventDefault(); const {action,id}=button.dataset;
-  if(action==='close') return modal.close();
-  if(action==='nav') return go(button.dataset.page);
-  if(action==='new') { if(events.length>=20) return toast('You can keep up to 20 events on this device. Export and remove an older event first.'); return eventDialog(); }
-  if(action==='edit-event') return eventDialog(true);
-  if(action==='export') {exportEvent(event());return toast('Your plan has been exported. Keep the backup somewhere safe.');}
-  if(action==='import') { const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{try{if(events.length>=20)throw new Error('The 20-event limit has been reached.');events.push(await importEvent(input.files[0]));selected=events.length-1;ideas=[];persist();go('overview');toast('Plan imported successfully.');}catch(error){toast(error.message);}};input.click();return; }
-  if(action==='privacy') return openDialog('Your plans, your space.', '<div class="privacy-copy"><p>Events, budgets, vendor details and saved ideas are stored in this browser’s local storage. There is no account, cloud sync or analytics. Anyone using this browser profile can see saved plans.</p><p>Export a JSON backup before clearing browser data. Imports create a new event and do not replace existing plans. Conversation history is cleared on reload and is not restored from backups.</p><p>When you use Gemini, your event brief, budget and current question go to Google’s API. Vendor contacts and previous chat messages are excluded. Avoid putting sensitive personal information in your brief. The local planning guide sends no event data.</p><p>Sample wedding details are a starting example. Use New event to create your own celebration. Delete events through Edit event details.</p></div><div class="dialog-actions"><button class="button primary" data-action="close">Got it</button></div>');
-  if(action==='filter'){taskFilter=button.dataset.filter;render();return;}
-  if(action==='add-task'||action==='edit-task')return taskDialog(id);
-  if(action==='add-vendor'||action==='edit-vendor')return vendorDialog(id);
-  if(action==='add-budget')return openDialog('Make room for another detail.', `${field('Category name','name','','required maxlength="80"')}${field('Planned amount','planned',0,'type="number" min="0" max="100000000" step="1" required')}`, 'budget-form','Add category');
-  if(action.startsWith('delete-'))return confirmDelete('Remove this from your plan?', action==='delete-event'?'This event and its tasks, vendors and budget will be removed from this browser. Export a backup first if you need it.':'This item will be permanently removed. Recorded amounts will no longer appear in totals.',action.replace('delete-','confirm-'),id);
-  if(action.startsWith('confirm-')){ const target=action.slice(8); if(target==='event'){events.splice(selected,1);selected=0;ideas=[];}else{const key=({task:'tasks',vendor:'vendors',budget:'budget'})[target];event()[key]=event()[key].filter(i=>i.id!==id);}modal.close();persist();render();toast('Removed from your plan.');return; }
-  if(action==='save-idea'){const item=ideas[Number(button.dataset.index)];const existing=event().savedIdeas.find(i=>i.title===item.title);if(existing)event().savedIdeas=event().savedIdeas.filter(i=>i.id!==existing.id);else if(event().savedIdeas.length<50)event().savedIdeas.push({...item,id:uid()});else return toast('You can save up to 50 ideas per event.');persist();render();return;}
-  if(action==='remove-idea'){event().savedIdeas=event().savedIdeas.filter(i=>i.id!==id);persist();render();return;}
-  if(action==='generate-ideas'){if(busy)return;const target=event();busy=true;render();try{const result=aiReady?await requestAI('ideas'): {ideas:localIdeas(target.profile)};if(event()===target)ideas=result.ideas;toast(aiReady?'Three new ideas, inspired by your brief.':'Planning ideas refreshed from your current brief.');}catch(error){toast(error.message);}finally{busy=false;render();}return;}
-  if(action==='suggest')return sendQuestion(button.dataset.question);
-  if(action==='print')return printSummary();
+document.addEventListener('click', async (ev) => {
+  const button = ev.target.closest('[data-action]');
+  if (!button) return;
+  ev.preventDefault();
+  const { action, id } = button.dataset;
+  if (action === 'close') return modal.close();
+  if (action === 'nav') return go(button.dataset.page);
+  if (action === 'new') {
+    if (events.length >= 20)
+      return toast(
+        'You can keep up to 20 events on this device. Export and remove an older event first.',
+      );
+    return eventDialog();
+  }
+  if (action === 'edit-event') return eventDialog(true);
+  if (action === 'export') {
+    exportEvent(event());
+    return toast('Your plan has been exported. Keep the backup somewhere safe.');
+  }
+  if (action === 'import') {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      try {
+        if (events.length >= 20) throw new Error('The 20-event limit has been reached.');
+        events.push(await importEvent(input.files[0]));
+        selected = events.length - 1;
+        ideas = [];
+        persist();
+        go('overview');
+        toast('Plan imported successfully.');
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    input.click();
+    return;
+  }
+  if (action === 'privacy')
+    return openDialog(
+      'Your plans, your space.',
+      '<div class="privacy-copy"><p>Events, budgets, vendor details and saved ideas are stored in this browser’s local storage. There is no account, cloud sync or analytics. Anyone using this browser profile can see saved plans.</p><p>Export a JSON backup before clearing browser data. Imports create a new event and do not replace existing plans. Conversation history is cleared on reload and is not restored from backups.</p><p>When you use Gemini, your event brief, budget and current question go to Google’s API. Vendor contacts and previous chat messages are excluded. Avoid putting sensitive personal information in your brief. The local planning guide sends no event data.</p><p>Sample wedding details are a starting example. Use New event to create your own celebration. Delete events through Edit event details.</p></div><div class="dialog-actions"><button class="button primary" data-action="close">Got it</button></div>',
+    );
+  if (action === 'filter') {
+    taskFilter = button.dataset.filter;
+    render();
+    return;
+  }
+  if (action === 'add-task' || action === 'edit-task') return taskDialog(id);
+  if (action === 'add-vendor' || action === 'edit-vendor') return vendorDialog(id);
+  if (action === 'add-budget')
+    return openDialog(
+      'Make room for another detail.',
+      `${field('Category name', 'name', '', 'required maxlength="80"')}${field('Planned amount', 'planned', 0, 'type="number" min="0" max="100000000" step="1" required')}`,
+      'budget-form',
+      'Add category',
+    );
+  if (action.startsWith('delete-'))
+    return confirmDelete(
+      'Remove this from your plan?',
+      action === 'delete-event'
+        ? 'This event and its tasks, vendors and budget will be removed from this browser. Export a backup first if you need it.'
+        : 'This item will be permanently removed. Recorded amounts will no longer appear in totals.',
+      action.replace('delete-', 'confirm-'),
+      id,
+    );
+  if (action.startsWith('confirm-')) {
+    const target = action.slice(8);
+    if (target === 'event') {
+      events.splice(selected, 1);
+      selected = 0;
+      ideas = [];
+    } else {
+      const key = { task: 'tasks', vendor: 'vendors', budget: 'budget' }[target];
+      event()[key] = event()[key].filter((i) => i.id !== id);
+    }
+    modal.close();
+    persist();
+    render();
+    toast('Removed from your plan.');
+    return;
+  }
+  if (action === 'save-idea') {
+    const item = ideas[Number(button.dataset.index)];
+    const existing = event().savedIdeas.find((i) => i.title === item.title);
+    if (existing) event().savedIdeas = event().savedIdeas.filter((i) => i.id !== existing.id);
+    else if (event().savedIdeas.length < 50) event().savedIdeas.push({ ...item, id: uid() });
+    else return toast('You can save up to 50 ideas per event.');
+    persist();
+    render();
+    return;
+  }
+  if (action === 'remove-idea') {
+    event().savedIdeas = event().savedIdeas.filter((i) => i.id !== id);
+    persist();
+    render();
+    return;
+  }
+  if (action === 'generate-ideas') {
+    if (busy) return;
+    const target = event();
+    busy = true;
+    render();
+    try {
+      const result = aiReady ? await requestAI('ideas') : { ideas: localIdeas(target.profile) };
+      if (event() === target) ideas = result.ideas;
+      toast(
+        aiReady
+          ? 'Three new ideas, inspired by your brief.'
+          : 'Planning ideas refreshed from your current brief.',
+      );
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      busy = false;
+      render();
+    }
+    return;
+  }
+  if (action === 'suggest') return sendQuestion(button.dataset.question);
+  if (action === 'print') return printSummary();
 });
-document.addEventListener('change', ev => {
-  const el=ev.target;
-  if(el.id==='event-select'){selected=Number(el.value);ideas=[];render();return;}
-  if(el.id==='guide-toggle'){forceGuide=el.checked;render();return;}
-  if(el.id==='access-code'){accessCode=el.value;return;}
-  if(el.dataset.task){event().tasks.find(t=>t.id===el.dataset.task).done=el.checked;persist();render();}
-  if(el.dataset.budget){if(!el.checkValidity()||el.value===''){el.reportValidity();render();return;}event().budget.find(b=>b.id===el.dataset.budget)[el.dataset.field]=Number(el.value);persist();render();}
-  if(el.dataset.vendor){event().vendors.find(v=>v.id===el.dataset.vendor).checks[el.dataset.check]=el.checked;persist();}
+document.addEventListener('change', (ev) => {
+  const el = ev.target;
+  if (el.id === 'event-select') {
+    selected = Number(el.value);
+    ideas = [];
+    render();
+    return;
+  }
+  if (el.id === 'guide-toggle') {
+    forceGuide = el.checked;
+    render();
+    return;
+  }
+  if (el.id === 'access-code') {
+    accessCode = el.value;
+    return;
+  }
+  if (el.dataset.task) {
+    event().tasks.find((t) => t.id === el.dataset.task).done = el.checked;
+    persist();
+    render();
+  }
+  if (el.dataset.budget) {
+    if (!el.checkValidity() || el.value === '') {
+      el.reportValidity();
+      render();
+      return;
+    }
+    event().budget.find((b) => b.id === el.dataset.budget)[el.dataset.field] = Number(el.value);
+    persist();
+    render();
+  }
+  if (el.dataset.vendor) {
+    event().vendors.find((v) => v.id === el.dataset.vendor).checks[el.dataset.check] = el.checked;
+    persist();
+  }
 });
-document.addEventListener('submit', ev => {
-  ev.preventDefault();const form=ev.target; if(!form.reportValidity())return;
-  const data=Object.fromEntries(new FormData(form));
-  try{
-    if(form.id==='chat-form')return sendQuestion(data.question);
-    if(form.id==='event-form'){
-      const edit=data.editing==='true';const profile=validateProfile({...data,type:edit?event().profile.type:data.type,outdoor:data.outdoor==='on'});
-      if(edit){const e=event();if(profile.currency!==e.profile.currency&&(e.budget.some(b=>b.actual>0)||e.vendors.length))throw new Error('Currency changes do not convert amounts. Create a new event in the new currency or clear recorded spending and vendors first.');const delta=daysUntil(profile.date,e.profile.date);e.tasks=e.tasks.map(t=>({...t,date:t.done?t.date:addDays(t.date,delta)}));e.profile=profile;}else{if(profile.date<today())throw new Error('Choose today or a future date.');events.push(createEvent(profile));selected=events.length-1;}ideas=[];
-    }else if(form.id==='task-form'){
-      const tasks=event().tasks;const old=tasks.find(t=>t.id===data.id);if(!old&&tasks.length>=200)throw new Error('You can have up to 200 tasks.');const item={id:old?.id||uid(),title:data.title.trim(),date:data.date,category:data.category.trim(),done:old?.done||false};if(!item.title||!item.category)throw new Error('Add a task name and category.');if(old)Object.assign(old,item);else tasks.push(item);
-    }else if(form.id==='vendor-form'){
-      const vendors=event().vendors,old=vendors.find(v=>v.id===data.id);if(!old&&vendors.length>=100)throw new Error('You can track up to 100 vendors.');const item={...data,id:old?.id||uid(),name:data.name.trim(),category:data.category.trim(),quote:Number(data.quote),checks:old?.checks||{terms:false,access:false,inclusions:false}};if(!item.name||!item.category)throw new Error('Add a vendor name and category.');if(old)Object.assign(old,item);else vendors.push(item);
-    }else if(form.id==='budget-form'){
-      if(event().budget.length>=30)throw new Error('You can have up to 30 budget categories.');if(!data.name.trim())throw new Error('Enter a category name.');event().budget.push({id:uid(),name:data.name.trim(),planned:Number(data.planned),actual:0});
-    }else return;
-    modal.close();persist();render();toast('Saved. One less thing on your mind.');
-  }catch(error){form.querySelector('.form-error').textContent=error.message;}
+document.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  if (!form.reportValidity()) return;
+  const data = Object.fromEntries(new FormData(form));
+  try {
+    if (form.id === 'chat-form') return sendQuestion(data.question);
+    if (form.id === 'event-form') {
+      const edit = data.editing === 'true';
+      const profile = validateProfile({
+        ...data,
+        type: edit ? event().profile.type : data.type,
+        outdoor: data.outdoor === 'on',
+      });
+      if (edit) {
+        const e = event();
+        if (
+          profile.currency !== e.profile.currency &&
+          (e.budget.some((b) => b.actual > 0) || e.vendors.length)
+        )
+          throw new Error(
+            'Currency changes do not convert amounts. Create a new event in the new currency or clear recorded spending and vendors first.',
+          );
+        const delta = daysUntil(profile.date, e.profile.date);
+        e.tasks = e.tasks.map((t) => ({ ...t, date: t.done ? t.date : addDays(t.date, delta) }));
+        e.profile = profile;
+      } else {
+        if (profile.date < today()) throw new Error('Choose today or a future date.');
+        events.push(createEvent(profile));
+        selected = events.length - 1;
+      }
+      ideas = [];
+    } else if (form.id === 'task-form') {
+      const tasks = event().tasks;
+      const old = tasks.find((t) => t.id === data.id);
+      if (!old && tasks.length >= 200) throw new Error('You can have up to 200 tasks.');
+      const item = {
+        id: old?.id || uid(),
+        title: data.title.trim(),
+        date: data.date,
+        category: data.category.trim(),
+        done: old?.done || false,
+      };
+      if (!item.title || !item.category) throw new Error('Add a task name and category.');
+      if (old) Object.assign(old, item);
+      else tasks.push(item);
+    } else if (form.id === 'vendor-form') {
+      const vendors = event().vendors,
+        old = vendors.find((v) => v.id === data.id);
+      if (!old && vendors.length >= 100) throw new Error('You can track up to 100 vendors.');
+      const item = {
+        ...data,
+        id: old?.id || uid(),
+        name: data.name.trim(),
+        category: data.category.trim(),
+        quote: Number(data.quote),
+        checks: old?.checks || { terms: false, access: false, inclusions: false },
+      };
+      if (!item.name || !item.category) throw new Error('Add a vendor name and category.');
+      if (old) Object.assign(old, item);
+      else vendors.push(item);
+    } else if (form.id === 'budget-form') {
+      if (event().budget.length >= 30) throw new Error('You can have up to 30 budget categories.');
+      if (!data.name.trim()) throw new Error('Enter a category name.');
+      event().budget.push({
+        id: uid(),
+        name: data.name.trim(),
+        planned: Number(data.planned),
+        actual: 0,
+      });
+    } else return;
+    modal.close();
+    persist();
+    render();
+    toast('Saved. One less thing on your mind.');
+  } catch (error) {
+    form.querySelector('.form-error').textContent = error.message;
+  }
 });
-function printSummary(){
-  const e=event(),p=e.profile;
-  const section=document.createElement('section');section.id='print-summary';section.innerHTML=`<h1>Gather · ${esc(p.name)}</h1><p>${esc(p.type)} · ${dateLabel(p.date)} · ${esc(p.location)} · ${p.guests} guests</p><p>${esc(p.preferences)}</p><h2>Budget · ${currency(p.budget)}</h2><table><thead><tr><th>Category</th><th>Planned</th><th>Actual</th></tr></thead><tbody>${e.budget.map(b=>`<tr><td>${esc(b.name)}</td><td>${currency(b.planned)}</td><td>${currency(b.actual)}</td></tr>`).join('')}</tbody></table><h2>Timeline</h2>${e.tasks.map(t=>`<p>${t.done?'✓':'□'} ${dateLabel(t.date)} — ${esc(t.title)}</p>`).join('')}<h2>Vendors</h2>${e.vendors.map(v=>`<p>${esc(v.name)} · ${esc(v.category)} · ${currency(v.quote)} · ${esc(v.status)}<br>${esc(v.contact)}</p>`).join('')||'<p>No vendors yet.</p>'}<h2>Saved ideas</h2>${e.savedIdeas.map(i=>`<h3>${esc(i.title)}</h3><p>${esc(i.description)}</p>`).join('')||'<p>No saved ideas yet.</p>'}`;document.body.append(section);window.print();section.remove();
+function printSummary() {
+  const e = event(),
+    p = e.profile;
+  const section = document.createElement('section');
+  section.id = 'print-summary';
+  section.innerHTML = /* HTML */ `<h1>Gather · ${esc(p.name)}</h1>
+    <p>${esc(p.type)} · ${dateLabel(p.date)} · ${esc(p.location)} · ${p.guests} guests</p>
+    <p>${esc(p.preferences)}</p>
+    <h2>Budget · ${currency(p.budget)}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Planned</th>
+          <th>Actual</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${e.budget.map((b) => `<tr><td>${esc(b.name)}</td><td>${currency(b.planned)}</td><td>${currency(b.actual)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <h2>Timeline</h2>
+    ${e.tasks.map((t) => `<p>${t.done ? '✓' : '□'} ${dateLabel(t.date)} — ${esc(t.title)}</p>`).join('')}
+    <h2>Vendors</h2>
+    ${e.vendors.map((v) => `<p>${esc(v.name)} · ${esc(v.category)} · ${currency(v.quote)} · ${esc(v.status)}<br>${esc(v.contact)}</p>`).join('') || '<p>No vendors yet.</p>'}
+    <h2>Saved ideas</h2>
+    ${e.savedIdeas.map((i) => `<h3>${esc(i.title)}</h3><p>${esc(i.description)}</p>`).join('') || '<p>No saved ideas yet.</p>'}`;
+  document.body.append(section);
+  window.print();
+  section.remove();
 }
 render();
-if(startupError)toast(startupError);else persist();
-fetch('/api/health').then(r=>r.json()).then(data=>{aiReady=data.aiConfigured;needsCode=data.accessCodeRequired;if(page==='assistant'||page==='ideas')render();}).catch(()=>{});
+if (startupError) toast(startupError);
+else persist();
+fetch('/api/health')
+  .then((r) => r.json())
+  .then((data) => {
+    aiReady = data.aiConfigured;
+    needsCode = data.accessCodeRequired;
+    if (page === 'assistant' || page === 'ideas') render();
+  })
+  .catch(() => {});
