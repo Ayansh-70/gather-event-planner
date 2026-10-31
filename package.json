@@ -1,0 +1,14 @@
+{
+  "name": "gather-event-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A context-aware event planning assistant with optional Gemini intelligence.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --watch --env-file-if-exists=.env server/index.js",
+    "test": "node --test",
+    "check": "node scripts/check.mjs"
+  }
+}

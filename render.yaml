@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: gather-event-planner
+    runtime: node
+    plan: free
+    buildCommand: node --version
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: APP_ORIGIN
+        sync: false
+      - key: AI_ACCESS_CODE
+        sync: false
